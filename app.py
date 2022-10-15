@@ -1,5 +1,4 @@
 import math
-import json
 import os
 
 import dlib
