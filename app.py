@@ -8,8 +8,11 @@ from flask import Flask, request, render_template
 
 # Load our trained detector
 file_name = 'left_hand_nail_detector_all.svm'
+thumb_file_name = 'left_hand_thumbnail_detector.svm'
 detector = dlib.simple_object_detector(file_name)
+thumb_detector = dlib.simple_object_detector(thumb_file_name)
 predictor = dlib.shape_predictor('left_hand_nail_predictor.dat')
+thumb_predictor = dlib.shape_predictor('left_hand_thumbnail_predictor.dat')
 
 start_time = time.time()
 
@@ -23,15 +26,12 @@ def distance(point_1, point_2):
     return math.sqrt(width * width + height * height)
 
 
-def detect(frame):
-    # Detect with detector
-    detections = detector(frame)
-
+def process_detections(frame, detections, shape_predictor, fingers):
     st = time.time()
     print('Detected ', len(detections))
     results = []
     for idx, detection in enumerate(detections):
-        shape = predictor(frame, detection)
+        shape = shape_predictor(frame, detection)
         shape = face_utils.shape_to_np(shape)
 
         center_point = (round((shape[3][0] + shape[0][0]) / 2), round((shape[3][1] + shape[0][1]) / 2))
@@ -44,13 +44,34 @@ def detect(frame):
             'width': width,
             'center_point': center_point,
             'rotation': angle,
-            'finger': ['little', 'ring', 'middle', 'index'][idx]
+            'finger': fingers[idx]
         }
         results.append(result)
     print('Evaluating Completed, Total Time taken: {:.6f} seconds'.format(time.time() - st))
+    return results
+
+
+def detect(frame):
+    # Detect with detector
+    detections = detector(frame)
+
+    return process_detections(frame, detections, predictor, ['little', 'ring', 'middle', 'index'])
+
+
+def thumb_detect(frame):
+    # Detect with detector
+    detections = thumb_detector(frame)
+
+    return process_detections(frame, detections, thumb_predictor, ['thumb'])
+
+
+def respond_detections(frame):
+    items = []
+    items += detect(frame)
+    items += thumb_detect(frame)
     return {
         'data': {
-            'items': results
+            'items': items
         }
     }
 
@@ -84,7 +105,7 @@ def recognize():
         path = os.path.join(app.config['UPLOAD_FOLDER'], str(time.time_ns()) + image.filename)
         image.save(path)
         frame = dlib.load_rgb_image(path)
-        return detect(frame)
+        return respond_detections(frame)
 
 
 if __name__ == "__main__":
