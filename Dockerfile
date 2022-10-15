@@ -3,7 +3,7 @@
 FROM python:3.9-slim-buster
 
 RUN apt-get update -qq --fix-missing \
-  && apt-get install -y --no-install-recommends build-essential cmake libgl1 \
+  && apt-get install -y --no-install-recommends build-essential cmake libgl1 libglib2.0-0 \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
