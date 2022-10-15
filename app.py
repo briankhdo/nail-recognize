@@ -31,7 +31,7 @@ def detect(frame):
     st = time.time()
     print('Detected ', len(detections))
     results = []
-    for detection in detections:
+    for idx, detection in enumerate(detections):
         shape = predictor(frame, detection)
         shape = face_utils.shape_to_np(shape)
 
@@ -44,7 +44,8 @@ def detect(frame):
         result = {
             'width': width,
             'center_point': center_point,
-            'rotation': angle
+            'rotation': angle,
+            'finger': ['little', 'ring', 'middle', 'index'][idx]
         }
         results.append(result)
     print('Evaluating Completed, Total Time taken: {:.6f} seconds'.format(time.time() - st))
@@ -85,3 +86,9 @@ def recognize():
         image.save(path)
         frame = dlib.load_rgb_image(path)
         return detect(frame)
+
+
+if __name__ == "__main__":
+    from waitress import serve
+
+    serve(app, host="0.0.0.0", port=8080)

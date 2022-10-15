@@ -1,0 +1,73 @@
+version: 2.1
+
+orbs:
+  slack: circleci/slack@4.10.1
+
+jobs:
+  build_and_push_docker_image:
+    machine: true
+    resource_class: briankhdo/digitalocean
+    working_directory: /var/opt/circleci/nail-recognize
+    steps:
+      - checkout
+      - run:
+          name: Build application Docker image
+          command: |
+            docker build -t app .
+      - run:
+          name: Push application Docker image
+          command: |
+            docker login ${ECR_ENDPOINT} -u="${DIGITALOCEAN_ACCESS_TOKEN}" -p="${DIGITALOCEAN_ACCESS_TOKEN}"
+            if [ "${CIRCLE_BRANCH}" == "staging" ]; then
+              docker tag app "${ECR_ENDPOINT}/nail-recognize:staging"
+              docker push "${ECR_ENDPOINT}/nail-recognize:staging"
+            elif [ "${CIRCLE_BRANCH}" == "main" ]; then
+              docker tag app "${ECR_ENDPOINT}/nail-recognize:latest"
+              docker push "${ECR_ENDPOINT}/nail-recognize:latest"
+            fi
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+  submit_deployment:
+    docker:
+      - image: cimg/base:2022.06
+    steps:
+      - run:
+          name: Trigger deployment
+          command: |
+            export LATEST_DOWNLOAD_LINK=$(curl --silent \
+                "https://api.github.com/repos/digitalocean/doctl/releases/latest" | \
+                  jq -r '.assets[] | select(.name|test(".*-linux-amd64.tar.gz")).browser_download_url')
+            curl -sL $LATEST_DOWNLOAD_LINK | tar -xzv -C /tmp
+            mv /tmp/doctl . && chmod +x doctl
+            ./doctl auth init -t ${DIGITALOCEAN_ACCESS_TOKEN}
+            if [ "${CIRCLE_BRANCH}" == "staging" ]; then
+              ./doctl apps create-deployment ${STAGING_APP_ID} --wait
+            elif [ "${CIRCLE_BRANCH}" == "main" ]; then
+              ./doctl apps create-deployment ${PRODUCTION_APP_ID} --wait
+            fi
+      - slack/notify:
+          event: pass
+          template: success_tagged_deploy_1
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+workflows:
+  build_and_deploy:
+    jobs:
+      - build_and_push_docker_image:
+          context: org-global
+          filters:
+            branches:
+              only:
+                - main
+                - staging
+      - submit_deployment:
+          context: org-global
+          filters:
+            branches:
+              only:
+                - main
+                - staging
+          requires:
+            - build_and_push_docker_image
